@@ -25,11 +25,6 @@ class GeminiCurriculumClient @Inject constructor() {
     fun isConfigured(apiKey: String) = apiKey.isNotBlank()
 
     suspend fun fetchCard(apiKey: String, area: String, topic: String): Result<KnowledgeCard> = runCatching {
-        val model = GenerativeModel(
-            modelName = "gemini-1.5-flash",
-            apiKey = apiKey,
-            generationConfig = generationConfig { responseMimeType = "application/json"; temperature = 0.2f },
-        )
         val prompt = """
 Você é um assistente factual. Gere UMA ficha de conhecimento em português do Brasil sobre o tópico abaixo.
 Responda SOMENTE com JSON válido, sem markdown, seguindo exatamente este schema:
@@ -40,16 +35,26 @@ Nunca invente fatos; se não souber, reduza nivel_de_certeza e explique a limita
 Área: $area
 Tópico: $topic
 """.trim()
-        val text = model.generateContent(content { text(prompt) }).text.orEmpty().trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
-        val dto = json.decodeFromString<CardDto>(text)
-        KnowledgeCard(
-            area = dto.area.ifBlank { area }, topico = dto.topico.ifBlank { topic },
-            resumoCurto = dto.resumo_curto, explicacao = dto.explicacao,
-            conceitosChave = dto.conceitos_chave, exemplos = dto.exemplos,
-            nuancesEExcecoes = dto.nuances_e_excecoes, errosComuns = dto.erros_comuns,
-            perguntasERespostas = dto.perguntas_e_respostas.map { Qa(it.pergunta, it.resposta) },
-            nivelDeCerteza = dto.nivel_de_certeza.coerceIn(0f, 1f),
-        )
+        var last: Throwable? = null
+        for (name in listOf("gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-2.0-flash", "gemini-2.0-flash-lite")) {
+            val r = runCatching {
+                val model = GenerativeModel(modelName = name, apiKey = apiKey, generationConfig = generationConfig { responseMimeType = "application/json"; temperature = 0.2f })
+                val text = model.generateContent(content { text(prompt) }).text.orEmpty().trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+                json.decodeFromString<CardDto>(text)
+            }
+            r.onSuccess { dto ->
+                return@runCatching KnowledgeCard(
+                    area = dto.area.ifBlank { area }, topico = dto.topico.ifBlank { topic },
+                    resumoCurto = dto.resumo_curto, explicacao = dto.explicacao,
+                    conceitosChave = dto.conceitos_chave, exemplos = dto.exemplos,
+                    nuancesEExcecoes = dto.nuances_e_excecoes, errosComuns = dto.erros_comuns,
+                    perguntasERespostas = dto.perguntas_e_respostas.map { Qa(it.pergunta, it.resposta) },
+                    nivelDeCerteza = dto.nivel_de_certeza.coerceIn(0f, 1f),
+                )
+            }
+            r.onFailure { last = it }
+        }
+        throw last ?: IllegalStateException("Falha ao gerar ficha")
     }
 }
 

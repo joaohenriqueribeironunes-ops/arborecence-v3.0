@@ -34,11 +34,18 @@ data class ChatMsg(val fromUser: Boolean, val text: String, val source: String? 
 @HiltViewModel
 class AssistantViewModel @Inject constructor(private val repo: AssistantRepository, private val tts: TtsHelper) : ViewModel() {
     val online = repo.isOnline().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val geminiConfigured = repo.isGeminiConfigured()
     val messages = mutableStateListOf<ChatMsg>()
     var busy = mutableStateOf(false)
         private set
     var lastQuestion = mutableStateOf("")
         private set
+
+    private suspend fun route(prompt: String): AssistantReply {
+        // Funciona sem fichas: com internet + Gemini configurado, responde via Gemini.
+        return if (online.value && geminiConfigured) repo.askGemini(prompt, personalConsent = true) else repo.askLocal(prompt)
+    }
+
     fun ask(q: String, mode: String = "normal") = viewModelScope.launch {
         if (q.isBlank()) return@launch
         lastQuestion.value = q
@@ -49,13 +56,13 @@ class AssistantViewModel @Inject constructor(private val repo: AssistantReposito
         }
         if (mode == "normal") messages += ChatMsg(true, q)
         busy.value = true
-        val r = repo.askLocal(prompt)
-        val safe = if (r.text.contains("encerrar", true)) r.text else r.text // comando de encerramento tratado no serviço
-        messages += ChatMsg(false, safe, r.source, r.offline)
-        tts.speak(safe.take(500))
+        val r = route(prompt)
+        messages += ChatMsg(false, r.text, r.source, r.offline)
+        tts.speak(r.text.take(500))
         busy.value = false
     }
     fun askGemini(q: String) = viewModelScope.launch {
+        if (q.isBlank()) return@launch
         busy.value = true
         val r = repo.askGemini(q, personalConsent = true)
         messages += ChatMsg(false, r.text, r.source, r.offline)
@@ -100,7 +107,14 @@ fun AssistantRoute(onBack: () -> Unit, startVoice: Boolean = false, onStartMic: 
             }
         }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
-            Text(if (online) "Online (Gemini opcional)" else "Offline, usando conhecimento local", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
+            Text(
+                when {
+                    online && vm.geminiConfigured -> "Online — respondendo com Gemini (funciona sem fichas)"
+                    online -> "Online"
+                    else -> "Offline, usando conhecimento local"
+                },
+                Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary
+            )
             Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AssistChip(onClick = { vm.ask(vm.lastQuestion.value, "other") }, label = { Text("Explique de outro jeito") }, enabled = vm.lastQuestion.value.isNotBlank() && !vm.busy.value)
                 AssistChip(onClick = { vm.ask(vm.lastQuestion.value, "more") }, label = { Text("Mais detalhes") }, enabled = vm.lastQuestion.value.isNotBlank() && !vm.busy.value)

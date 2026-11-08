@@ -35,6 +35,7 @@ interface ReviewRepository {
 
 interface AssistantRepository {
     fun isOnline(): Flow<Boolean>
+    fun isGeminiConfigured(): Boolean
     suspend fun askLocal(question: String): AssistantReply
     suspend fun askGemini(question: String, personalConsent: Boolean): AssistantReply
 }
