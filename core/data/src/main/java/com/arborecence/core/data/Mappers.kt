@@ -32,7 +32,7 @@ fun LearningProgressEntity.toDomain() = LearningProgress(day, areasCovered.unpac
 fun LearningProgress.toEntity() = LearningProgressEntity(0, day, areasCovered.pack(), cardCount, active, lastUpdated)
 
 fun FloatArray.toBytes(): ByteArray = ByteBuffer.allocate(size * 4).apply { for (f in this@toBytes) putFloat(f) }.array()
-fun ByteArray.toFloats(): FloatArray { val b = ByteBuffer.wrap(this); return FloatArray(remaining() / 4) { b.float } }
+fun ByteArray.toFloats(): FloatArray { val b = ByteBuffer.wrap(this); return FloatArray(b.remaining() / 4) { b.float } }
 fun cosine(a: FloatArray, b: FloatArray): Float {
     if (a.isEmpty() || b.isEmpty() || a.size != b.size) return 0f
     var dot = 0f; var na = 0f; var nb = 0f
