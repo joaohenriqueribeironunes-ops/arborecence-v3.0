@@ -43,10 +43,10 @@ fun FocusRoute(onBack: () -> Unit) {
                 Text("${minutes.toInt()} minutos")
             } }
             if (breakSuggested) GlassSurface { Column(Modifier.padding(16.dp)) { Text("Pausa sensorial sugerida", style = MaterialTheme.typography.titleMedium); Text("Alongue, beba água, respire devagar ou descanse os olhos por alguns instantes — só se quiser."); TextButton(onClick = { breakSuggested = false }) { Text("Ok") } } }
-            PrimaryGlassButton(if (running) "Pausar" else "Iniciar") {
+            PrimaryGlassButton(if (running) "Pausar" else "Iniciar", onClick = {
                 if (!running && remaining == 0) remaining = minutes.toInt() * 60
                 running = !running
-            }
+            })
             OutlinedButton(onClick = { running = false; remaining = 0; breakSuggested = false }, shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)) { Text("Reiniciar") }
             GlassSurface { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Estacionamento de pensamentos", style = MaterialTheme.typography.titleMedium)
