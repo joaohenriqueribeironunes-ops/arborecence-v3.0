@@ -29,8 +29,17 @@ class LocalAssistantEngine @Inject constructor(
     @Volatile private var loaded = false
     @Volatile private var lastUse = 0L
     private val modelFile get() = File(context.filesDir, "models/llm.task")
+    private fun ensureBundled(): File? {
+        if (modelFile.exists()) return modelFile
+        return runCatching {
+            context.assets.open("models/llm.task").use { input ->
+                modelFile.parentFile?.mkdirs(); modelFile.outputStream().use { input.copyTo(it) }
+            }
+            modelFile.takeIf { it.exists() }
+        }.getOrNull()
+    }
 
-    fun modelReady() = modelFile.exists()
+    fun modelReady() = modelFile.exists() || runCatching { context.assets.open("models/llm.task").close(); true }.getOrDefault(false)
 
     private fun batteryLow(): Boolean {
         val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
@@ -53,17 +62,18 @@ class LocalAssistantEngine @Inject constructor(
                 source = "Base local (RAG)", confidence = if (cards.isEmpty()) 0.2f else cards.maxOf { it.nivelDeCerteza }, offline = true
             )
         }
-        if (!modelReady()) {
+        val bundled = ensureBundled()
+        if (bundled == null || !bundled.exists()) {
             val msg = buildString {
                 append(cards.firstOrNull()?.explicacao?.take(320) ?: ragBase.take(320))
                 append(personalHint)
                 if (lowConfidence) append("\n\nMinha base local tem baixa confiança para isso. Posso explicar de outro jeito, ou, se houver internet e você pedir, consultar o Gemini (informando a fonte).")
-                append("\n\n(Modelo de linguagem local não instalado em files/models/llm.task. O assistente está usando a base local/RAG.)")
+                append("\n\n(Modelo de linguagem local não instalado em assets/models ou files/models/llm.task. O assistente está usando a base local/RAG.)")
             }
             return AssistantReply(msg.trim(), source = "Base local (RAG)", confidence = if (cards.isEmpty()) 0.2f else cards.maxOf { it.nivelDeCerteza }, offline = true)
         }
 
-        // Modelo presente: carregar sob demanda / liberar após inatividade (ponto de extensão para MediaPipe GenAI).
+        // Modelo presente (integrado no APK ou baixado): carregar sob demanda / liberar após inatividade.
         loaded = true; lastUse = System.currentTimeMillis()
         val msg = buildString {
             append("Com base no que encontrei localmente: ")

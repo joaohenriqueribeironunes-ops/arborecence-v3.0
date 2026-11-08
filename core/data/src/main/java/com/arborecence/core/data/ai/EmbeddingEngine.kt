@@ -20,22 +20,26 @@ interface EmbeddingEngine {
 class MediaPipeEmbeddingEngine @Inject constructor(@ApplicationContext private val context: Context) : EmbeddingEngine {
     @Volatile private var embedder: TextEmbedder? = null
     private val modelFile get() = File(context.filesDir, "models/embedding.tflite")
+    private fun ensureBundled(): File? {
+        if (modelFile.exists()) return modelFile
+        // Se o APK trouxer o modelo em assets/models/embedding.tflite, extrai para files/models.
+        return runCatching {
+            context.assets.open("models/embedding.tflite").use { input ->
+                modelFile.parentFile?.mkdirs()
+                modelFile.outputStream().use { input.copyTo(it) }
+            }
+            modelFile.takeIf { it.exists() }
+        }.getOrNull()
+    }
 
-    override fun isReady(): Boolean = modelFile.exists()
+    override fun isReady(): Boolean = modelFile.exists() || runCatching { context.assets.open("models/embedding.tflite").close(); true }.getOrDefault(false)
     override suspend fun embed(text: String): FloatArray? {
-        if (!isReady()) return null
+        val file = ensureBundled() ?: return null
         val e = embedder ?: runCatching {
             val opts = TextEmbedder.TextEmbedderOptions.builder()
-                .setBaseOptions(BaseOptions.builder().setModelAssetPath(modelFile.absolutePath).build()).build()
-            // MediaPipe may require model in assets; if absolute path fails, callers should place model appropriately.
+                .setBaseOptions(BaseOptions.builder().setModelAssetPath(file.absolutePath).build()).build()
             TextEmbedder.createFromOptions(context, opts)
-        }.getOrElse {
-            runCatching {
-                val opts = TextEmbedder.TextEmbedderOptions.builder()
-                    .setBaseOptions(BaseOptions.builder().setModelAssetPath("embedding.tflite").build()).build()
-                TextEmbedder.createFromOptions(context, opts)
-            }.getOrNull()
-        } ?: return null
+        }.getOrNull() ?: return null
         embedder = e
         return runCatching { e.embed(text).embeddingResult().embeddings().firstOrNull()?.floatEmbedding() }.getOrNull()
     }
