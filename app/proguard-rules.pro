@@ -1,0 +1,6 @@
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+-dontwarn com.google.mediapipe.**
+-dontwarn org.tensorflow.**
+-keep class com.arborecence.core.data.ai.CardDto { *; }
+-keep class com.arborecence.core.data.ai.QaDto { *; }
+-keepclassmembers class * { @kotlinx.serialization.SerialName <fields>; }
